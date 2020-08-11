@@ -388,39 +388,39 @@ for(response in goodplantnames){
 
 for(response in goodplantnames){    
 
-    # Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with climate covariates (normalized)
     namesclim <- allenvnames[which(allenvnames != "human")]
     resclimnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with human covariates (normalized)
     reshumnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=2)
 
     # Run INLA - Binomial model with number of trials = 1 with human and climate covariates (normalized)
     resclimhumnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allenvnames,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with plant covariates
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with plant covariates
     plantcov <- goodplantnames[goodplantnames != response]
     resplanormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=plantcov,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with human, climate and plant covariates (normalized)
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with human, climate and plant covariates (normalized)
     namesclimhumpla <- c(allenvnames,goodplantnames)
     namesclimhumpla <- namesclimhumpla[namesclimhumpla != response]
     resclimhumplanormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumpla,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with animal covariates (normalized)
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with animal covariates (normalized)
     resaninormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=goodanimalnames,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with animal and plant covariates (normalized)
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with animal and plant covariates (normalized)
     aniplacov <- c(goodplantnames,goodanimalnames)
     aniplacov <- aniplacov[aniplacov != response]
     resaniplanormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=aniplacov,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with human, climate and animal covariates (normalized)
+    # Run INLA - Gamma-Hurdle  model with number of trials = 1 with human, climate and animal covariates (normalized)
     namesclimhumani <- c(allenvnames,goodanimalnames)
     namesclimhumani <- namesclimhumani[namesclimhumani != response]
     resclimhumaninormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumani,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with all covariates (normalized)
+    # Run INLA - Gamma-Hurdle model with number of trials = 1 with all covariates (normalized)
     allcov <- c(allenvnames,goodplantnames,goodanimalnames)
     allcov <- allcov[allcov != response]
     rescovnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allcov,normcov=2)
@@ -498,7 +498,7 @@ grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]], vp
 for(response in goodplantnames){
 res <- reslist[[response]]
 PlotBox <- LonLatToAzi(rbind(c(135,50),c(45,50),c(-45,50),c(-135,50)))
-projl <- ProjBinomMesh(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
+projl <- ProjGammaHurdleMesh(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
 minplot <- 0
 maxplot <- 1
 mplots <- lapply(reducedtidx,function(i){
@@ -510,11 +510,30 @@ title <- paste("t = ",round(tknots[i])," years",sep="")
 p1 <- PlotPolar(m1,title=title,minplot=minplot,maxplot=maxplot,forcelegtit="Prob")
 return(p1)
 })
-#grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
-#png(paste(response,".png",sep=""),width=3000,height=1500,res=200)
-#grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
-#dev.off()
-png(paste(response,".png",sep=""),width=4000,height=750,res=300)
+png(paste(response,"_Prob.png",sep=""),width=4000,height=750,res=300)
 grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], nrow = 1,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
 dev.off()
 }
+
+
+# Project plant Gamma-Hurdle field (Gamma component)
+for(response in goodplantnames){
+res <- reslist[[response]]
+PlotBox <- LonLatToAzi(rbind(c(135,50),c(45,50),c(-45,50),c(-135,50)))
+projl <- ProjGammaHurdleMesh(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
+minplot <- min(unlist(projl[[3]]))
+maxplot <- max(unlist(projl[[3]]))
+mplots <- lapply(reducedtidx,function(i){
+m1 <- melt(projl[[3]][[i]])
+m1 <- cbind(projl[[4]]$lattice$loc,m1[,3])
+m1 <- data.frame(m1)
+colnames(m1) <- c("Lon","Lat","Score")
+title <- paste("t = ",round(tknots[i])," years",sep="")
+p1 <- PlotPolar(m1,title=title,minplot=minplot,maxplot=maxplot,forcelegtit="Score")
+return(p1)
+})
+png(paste(response,"_Div.png",sep=""),width=4000,height=750,res=300)
+grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], nrow = 1,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+dev.off()
+}
+
