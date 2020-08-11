@@ -25,10 +25,10 @@ allgridtimes <- sort(unique(gridtab$Age))
 
 
 # Build site table
-plant <- t(read.table("plant/genus_richness.csv",sep=",",header=TRUE,row.names=1))
+plant <- t(read.table("plant/life_form_richness.csv",sep=",",header=TRUE,row.names=1))
 plant <- data.frame(row.names(plant),plant)
 colnames(plant)[1] <- "sample"
-animal <- read.table("animal/distribution_matrix.csv",sep=",",header=TRUE)
+animal <- read.table("animal/distribution_matrix_withHerbivore.csv",sep=",",header=TRUE)
 metadata <- read.table("sample_metadata/sample_metadata_v17.csv",sep=",",header=TRUE)
 metadata$Age <- as.numeric(metadata$Age)
 metadata <- metadata[which(metadata$Age >= 0),]
@@ -57,9 +57,26 @@ colnames(sitetab)[which(colnames(sitetab) == "Age.y")] <- "NearestAge"
 colnames(sitetab)[which(colnames(sitetab) == "Rigion")] <- "Region"
 
 
+# Filter for animals with total P > 0.1
+ratios <- sapply(allanimalnames,function(response){
+    vec <- sitetab[,response][!is.na(sitetab[,response])]
+    ratio <- sum(vec)/length(vec)
+    return(ratio)
+})
+goodanimalnames <- allanimalnames[which(ratios > 0.1)]
+goodanimalnames <- goodanimalnames[which(goodanimalnames != "Herbivore")]
+
+# Filter out algae
+goodplantnames <- allplantnames[allplantnames != "Algae"]
+
+
+
 # Prepare spatial and temporal meshes
-k <- 6
+k <- 11
+alltidx <- seq(1,k)
+reducedtidx <- seq(2,k,2)
 tknots <- seq(min(sitetab$Age), max(sitetab$Age), length = k)
+reducedtknots <- tknots[seq(2,k,2)]
 mesh.t <- inla.mesh.1d(tknots)
 
 xytab <- cbind(sitetab$Longitude,sitetab$Latitude)
@@ -71,174 +88,278 @@ mesh.s <- inla.mesh.2d(bound = bound,max.edge = c(200, 400),max.n=200,cutoff = 5
 plot(mesh.s)
 spde.s <- inla.spde2.matern(mesh.s)
 
-# Filter for animals with total P > 0.1
-ratios <- sapply(allanimalnames,function(response){
-    vec <- sitetab[,response][!is.na(sitetab[,response])]
-    ratio <- sum(vec)/length(vec)
-    return(ratio)
-})
-goodanimalnames <- allanimalnames[which(ratios > 0.05)]
 
 
 # Model with no covariates
 reslist <- list()
-for(response in allanimalnames){
+for(response in goodanimalnames){
 
     # Run INLA - Binomial model with number of trials = 1 (no covariates)
-    reslist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c(),normcov=FALSE)
+    reslist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c(),normcov=0)
 }
 
 
 # Define lists to store results
-rescovnormlist <- list()
-resclimhumnormlist <- list()
-resclimhumaninormlist <- list()
 resclimnormlist <- list()
 reshumnormlist <- list()
+resclimhumnormlist <- list()
 resaninormlist <- list()
+resplanormlist <- list()
+resclimhumplanormlist <- list()
+resaniplanormlist <- list()
+resclimhumaninormlist <- list()
+rescovnormlist <- list()
 
 for(response in goodanimalnames){    
 
-    # Run INLA - Binomial model with number of trials = 1 with all covariates (normalized)
-    allcov <- c(allenvnames,allplantnames,goodanimalnames)
-    allcov <- allcov[allcov != response]
-    rescovnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allcov,normcov=TRUE)
+    # Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
+    namesclim <- allenvnames[which(allenvnames != "human")]
+    resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2,PlotBox=PlotBox)
+
+    # Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
+    reshumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=2)
 
     # Run INLA - Binomial model with number of trials = 1 with human and climate covariates (normalized)
-    resclimhumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allenvnames,normcov=TRUE)
+    resclimhumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allenvnames,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with plant covariates
+    resplanormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=goodplantnames,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with human, climate and plant covariates (normalized)
+    namesclimhumpla <- c(allenvnames,goodplantnames)
+    namesclimhumpla <- namesclimhumpla[namesclimhumpla != response]
+    resclimhumplanormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumpla,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with animal covariates (normalized)
+    animalcov <- goodanimalnames[goodanimalnames != response]
+    resaninormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=animalcov,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with animal and plant covariates (normalized)
+    aniplacov <- c(goodplantnames,goodanimalnames)
+    aniplacov <- aniplacov[aniplacov != response]
+    resaniplanormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=aniplacov,normcov=2)
 
     # Run INLA - Binomial model with number of trials = 1 with human, climate and animal covariates (normalized)
     namesclimhumani <- c(allenvnames,goodanimalnames)
     namesclimhumani <- namesclimhumani[namesclimhumani != response]
-    resclimhumaninormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumani,normcov=TRUE)
+    resclimhumaninormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumani,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
-    reshumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=TRUE)
+    # Run INLA - Binomial model with number of trials = 1 with all covariates (normalized)
+    allcov <- c(allenvnames,goodplantnames,goodanimalnames)
+    allcov <- allcov[allcov != response]
+    rescovnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allcov,normcov=2)
 
-    # Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
-    namesclim <- allenvnames[which(allenvnames != "human")]
-    resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=TRUE)
-
-    # Run INLA - Binomial model with number of trials = 1 with animal covariates (normalized)
-    animalcov <- goodanimalnames[goodanimalnames != response]
-    resnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=animalcov,normcov=TRUE)
 }
 
+animallists <- list()
+animallists[["None"]] <- reslist
+animallists[["Climate"]] <- resclimnormlist
+animallists[["Humans"]] <- reshumnormlist
+animallists[["Climate+Humans"]] <- resclimhumnormlist
+animallists[["Plants"]] <- resplanormlist
+animallists[["Climate+Humans+Plants"]] <- resclimhumplanormlist
+animallists[["Animals"]] <- resaninormlist
+animallists[["Animals+Plants"]] <- resaniplanormlist
+animallists[["Climate+Humans+Animals"]] <- resclimhumaninormlist
+animallists[["Climate+Humans+Animals+Plants"]] <- rescovnormlist
 
 
 # CPO
+modelcands <- names(animallists)
 cpotab <- sapply(goodanimalnames, function(response){
-    print(response)
-    vec <- c(-sum(log(reslist[[response]]$cpo$cpo),na.rm=TRUE),
-    -sum(log(resclimnormlist[[response]]$cpo$cpo),na.rm=TRUE),
-    -sum(log(reshumnormlist[[response]]$cpo$cpo),na.rm=TRUE),
-    -sum(log(resclimhumnormlist[[response]]$cpo$cpo),na.rm=TRUE),
-    -sum(log(resclimhumaninormlist[[response]]$cpo$cpo),na.rm=TRUE)
-    )
-    return(vec)
+    return(sapply( modelcands, function(modelname){ -sum(log(animallists[[modelname]][[response]]$cpo$cpo),na.rm=TRUE) }))
 })
-rownames(cpotab) <- c("None","Climate","Human","Cimate+Human","Climate+Human+Animal")
+rownames(cpotab) <- modelcands
 cpotabmelted <- melt(cpotab)
 colnames(cpotabmelted) <- c("Model","Animal","CPO")
-ggplot(cpotabmelted) +
+cpoplot <- ggplot(cpotabmelted) +
 geom_point(aes(x=Model,y=CPO,group=Animal,colour=Animal)) +
-geom_line(aes(x=Model,y=CPO,group=Animal,colour=Animal))
-
+geom_line(aes(x=Model,y=CPO,group=Animal,colour=Animal)) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+axis.title.x=element_blank(),
+text = element_text(size = 10)
+)
 
 # waic
+modelcands <- names(animallists)
 waictab <- sapply(goodanimalnames, function(response){
-    print(response)
-    vec <- c(
-        reslist[[response]]$waic$waic,
-        resclimnormlist[[response]]$waic$waic,
-        reshumnormlist[[response]]$waic$waic,
-        resclimhumnormlist[[response]]$waic$waic,
-        resclimhumaninormlist[[response]]$waic$waic
-    )
-    return(vec)
+    return(sapply( modelcands, function(modelname){animallists[[modelname]][[response]]$waic$waic}))
 })
-rownames(waictab) <- c("None","Climate","Human","Cimate+Human","Climate+Human+Animal")
+rownames(waictab) <- modelcands
 waictabmelted <- melt(waictab)
 colnames(waictabmelted) <- c("Model","Animal","WAIC")
-ggplot(waictabmelted) +
+waicplot <- ggplot(waictabmelted) +
 geom_point(aes(x=Model,y=WAIC,group=Animal,colour=Animal)) +
-geom_line(aes(x=Model,y=WAIC,group=Animal,colour=Animal))
+geom_line(aes(x=Model,y=WAIC,group=Animal,colour=Animal)) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1),
+axis.title.x=element_blank(),
+text = element_text(size = 10)
+)
+
+cpoplotlet <- arrangeGrob(cpoplot, top = textGrob("A", x = unit(0, "npc"), y   = unit(1, "npc"), just=c("left","top"),
+         gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
+waicplotlet <- arrangeGrob(waicplot, top = textGrob("B", x = unit(0, "npc"), y   = unit(1, "npc"), just=c("left","top"),
+         gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
+grid.arrange(cpoplotlet,waicplotlet, ncol=2, vp=viewport(width=0.98, height=0.98))
+
+
+covarplots <- CreateCovarPlots(waictab,goodanimalnames)
+grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]],covarplots[[5]],covarplots[[6]], vp=viewport(width=0.98, height=0.98))
+
+covarplots <- CreateCovarPlots(waictab,goodanimalnames,forcemodel="Climate+Humans+Plants")
+grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]],covarplots[[5]],covarplots[[6]], vp=viewport(width=0.98, height=0.98))
+
+
+# Herbivore
+
+response <- "Herbivore"    
+
+# Run INLA - Binomial model with number of trials = 1 (no covariates)
+reslist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c(),normcov=0)
+
+# Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
+namesclim <- allenvnames[which(allenvnames != "human")]
+resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2,PlotBox=PlotBox)
+
+# Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
+reshumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=2)
+
+# Run INLA - Binomial model with number of trials = 1 with human and climate covariates (normalized)
+resclimhumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allenvnames,normcov=2)
+
+# Run INLA - Binomial model with number of trials = 1 with plant covariates
+resplanormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=goodplantnames,normcov=2)
+
+# Run INLA - Binomial model with number of trials = 1 with human, climate and plant covariates (normalized)
+namesclimhumpla <- c(allenvnames,goodplantnames)
+namesclimhumpla <- namesclimhumpla[namesclimhumpla != response]
+resclimhumplanormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumpla,normcov=2)
+
+
+animallists <- list()
+animallists[["None"]] <- reslist
+animallists[["Climate"]] <- resclimnormlist
+animallists[["Humans"]] <- reshumnormlist
+animallists[["Climate+Humans"]] <- resclimhumnormlist
+animallists[["Plants"]] <- resplanormlist
+animallists[["Climate+Humans+Plants"]] <- resclimhumplanormlist
+animallists[["Animals"]] <- resaninormlist
+animallists[["Animals+Plants"]] <- resaniplanormlist
+animallists[["Climate+Humans+Animals"]] <- resclimhumaninormlist
+animallists[["Climate+Humans+Animals+Plants"]] <- rescovnormlist
+
+
+# CPO
+modelcands <- names(animallists)[seq(1,6)]
+cpotab <- sapply(c("Herbivore"), function(response){
+    return(sapply( modelcands, function(modelname){ -sum(log(animallists[[modelname]][[response]]$cpo$cpo),na.rm=TRUE) }))
+})
+rownames(cpotab) <- modelcands
+cpotabmelted <- melt(cpotab)
+colnames(cpotabmelted) <- c("Model","Animal","CPO")
+cpoplot <- ggplot(cpotabmelted) +
+geom_point(aes(x=Model,y=CPO,group=Animal,colour=Animal)) +
+geom_line(aes(x=Model,y=CPO,group=Animal,colour=Animal)) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+axis.title.x=element_blank(),
+text = element_text(size = 10)
+)
+
+# WAIC
+modelcands <- names(animallists)[seq(1,6)]
+waictab <- sapply(c("Herbivore"), function(response){
+    return(sapply( modelcands, function(modelname){animallists[[modelname]][[response]]$waic$waic}))
+})
+rownames(waictab) <- modelcands
+waictabmelted <- melt(waictab)
+colnames(waictabmelted) <- c("Model","Animal","WAIC")
+waicplot <- ggplot(waictabmelted) +
+geom_point(aes(x=Model,y=WAIC,group=Animal,colour=Animal)) +
+geom_line(aes(x=Model,y=WAIC,group=Animal,colour=Animal)) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1),
+axis.title.x=element_blank(),
+text = element_text(size = 10)
+)
+
+cpoplotlet <- arrangeGrob(cpoplot, top = textGrob("A", x = unit(0, "npc"), y   = unit(1, "npc"), just=c("left","top"),
+         gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
+waicplotlet <- arrangeGrob(waicplot, top = textGrob("B", x = unit(0, "npc"), y   = unit(1, "npc"), just=c("left","top"),
+         gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
+grid.arrange(cpoplotlet,waicplotlet, ncol=2, vp=viewport(width=0.98, height=0.98))
+
+
+covarplots <- CreateCovarPlots(waictab,c("Herbivore"))
+grid.arrange(covarplots[[1]], vp=viewport(width=0.98, height=0.98))
 
 
 
-
-
-# Project values
-for(response in allanimalnames){
+# Project animal Binomial probability field
+for(response in goodanimalnames){
 res <- reslist[[response]]
-
 PlotBox <- LonLatToAzi(rbind(c(135,50),c(45,50),c(-45,50),c(-135,50)))
-projl <- ProjMesh(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
-
-# Plot them...
+projl <- ProjBinomMesh(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
 minplot <- 0
 maxplot <- 1
-mplots <- lapply(seq(1,k),function(i){
+mplots <- lapply(reducedtidx,function(i){
 m1 <- melt(projl[[1]][[i]])
 m1 <- cbind(projl[[2]]$lattice$loc,m1[,3])
 m1 <- data.frame(m1)
-colnames(m1) <- c("Lon","Lat","Prob")
+colnames(m1) <- c("Lon","Lat","Score")
 title <- paste("t = ",round(tknots[i])," years",sep="")
-p1 <- PlotPolar(m1,title=title,minplot=minplot,maxplot=maxplot)
+p1 <- PlotPolar(m1,title=title,minplot=minplot,maxplot=maxplot,forcelegtit="Prob")
 return(p1)
 })
 #grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
 #png(paste(response,".png",sep=""),width=3000,height=1500,res=200)
 #grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
 #dev.off()
-png(paste(response,".png",sep=""),width=5000,height=750,res=300)
-grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 1,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+png(paste(response,".png",sep=""),width=4000,height=750,res=300)
+grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], nrow = 1,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+dev.off()
+}
+
+
+
+# Project animal field variance
+for(response in goodanimalnames){
+res <- reslist[[response]]
+PlotBox <- LonLatToAzi(rbind(c(135,50),c(45,50),c(-45,50),c(-135,50)))
+projl <- ProjBinomFieldVar(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
+minplot <- min(unlist(projl[[1]]))
+maxplot <- max(unlist(projl[[1]]))
+mplots <- lapply(reducedtidx,function(i){
+m1 <- melt(projl[[1]][[i]])
+m1 <- cbind(projl[[2]]$lattice$loc,m1[,3])
+m1 <- data.frame(m1)
+colnames(m1) <- c("Lon","Lat","Score")
+title <- paste("t = ",round(tknots[i])," years",sep="")
+p1 <- PlotPolar(m1,title=title,minplot=minplot,maxplot=maxplot,forcelegtit="Var")
+return(p1)
+})
+#grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+#png(paste(response,".png",sep=""),width=3000,height=1500,res=200)
+#grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+#dev.off()
+png(paste(response,"_Var.png",sep=""),width=4000,height=750,res=300)
+grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], nrow = 1,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
 dev.off()
 }
 
 
 
 
-valid <- which(sign(rescov$summary.fixed[,"0.025quant"]) == sign(rescov$summary.fixed[,"0.975quant"]))
-validnames <- rownames(rescov$summary.fixed[valid,])
-validmean <- rescovnorm$summary.fixed[valid,"mean"]
-names(validmean) <- validnames
-barplot(validmean)
 
 
-
-fitted <- resclimhumaninormlist$Mammoth
-valid <- which(sign(fitted$summary.fixed[,"0.025quant"]) == sign(fitted$summary.fixed[,"0.975quant"]))
-validnames <- rownames(fitted$summary.fixed[valid,])
-validmean <- fitted$summary.fixed[valid,"mean"]
-names(validmean) <- validnames
-barplot(validmean,cex.names=0.2,horiz=TRUE,las=1)
-
-
-for(animal in goodanimalnames){
-    print(animal)
-    fitted <- reshumnormlist[[animal]]
-    valid <- which(sign(fitted$summary.fixed[,"0.025quant"]) == sign(fitted$summary.fixed[,"0.975quant"]))
-    validnames <- rownames(fitted$summary.fixed[valid,])
-    validmean <- fitted$summary.fixed[valid,"mean"]
-    names(validmean) <- validnames
-    print(validnames)
-}
-
-
-
-Z <- sitetab$Horse
-
+Z <- sitetab$Graminoid
 tab <- cbind(xytab,sitetab$Age,Z)
-colnames(tab) <- c("LON","LAT","TIME","VALS")
+colnames(tab) <- c("X","Y","TIME","VALS")
 tab[,1] <- jitter(tab[,1],amount=0.2)
 tab[,2] <- jitter(tab[,2],amount=0.2)
 tab <- as.data.frame(tab)
 table <- tibble(tab)
 toplot <- table
-toplot <- table[which(table$VALS == 1),]
-hist(sitetab$Age[which(Z == 1)])
-ggplot(toplot, aes(x=LON, y=LAT, colour=TIME)) + geom_point() + scale_colour_gradient(low="blue", high="red")
+#toplot <- table[which(table$VALS == 1),]
+ggplot(toplot, aes(x=X, y=Y, colour=TIME)) + geom_point() + scale_colour_gradient(low="blue", high="red")
 
 
 
@@ -246,3 +367,154 @@ ggplot(toplot, aes(x=LON, y=LAT, colour=TIME)) + geom_point() + scale_colour_gra
 
 
 # PLANTS - USE HURDLE GAMMA MODEL
+
+# Record presence-absence for plants
+plantpres <- t(apply(sitetab[,allplantnames] > 0,1,as.numeric))
+colnames(plantpres) <- paste(allplantnames,"_P",sep="")
+plantscore <- ifelse(plantpres == 1, unlist(sitetab[,allplantnames]), NA)
+colnames(plantscore) <- paste(allplantnames,"_S",sep="")
+sitetab <- cbind(sitetab,plantpres,plantscore)
+
+
+
+# Model with no covariates
+for(response in goodplantnames){
+
+    # Run INLA - Hurdle Gamma model (no covariates)
+    reslist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c(),normcov=0)
+}
+
+
+
+for(response in goodplantnames){    
+
+    # Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
+    namesclim <- allenvnames[which(allenvnames != "human")]
+    resclimnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
+    reshumnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with human and climate covariates (normalized)
+    resclimhumnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allenvnames,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with plant covariates
+    plantcov <- goodplantnames[goodplantnames != response]
+    resplanormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=plantcov,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with human, climate and plant covariates (normalized)
+    namesclimhumpla <- c(allenvnames,goodplantnames)
+    namesclimhumpla <- namesclimhumpla[namesclimhumpla != response]
+    resclimhumplanormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumpla,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with animal covariates (normalized)
+    resaninormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=goodanimalnames,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with animal and plant covariates (normalized)
+    aniplacov <- c(goodplantnames,goodanimalnames)
+    aniplacov <- aniplacov[aniplacov != response]
+    resaniplanormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=aniplacov,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with human, climate and animal covariates (normalized)
+    namesclimhumani <- c(allenvnames,goodanimalnames)
+    namesclimhumani <- namesclimhumani[namesclimhumani != response]
+    resclimhumaninormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclimhumani,normcov=2)
+
+    # Run INLA - Binomial model with number of trials = 1 with all covariates (normalized)
+    allcov <- c(allenvnames,goodplantnames,goodanimalnames)
+    allcov <- allcov[allcov != response]
+    rescovnormlist[[response]] <- RunInlaHurdleGamma(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=allcov,normcov=2)
+
+}
+
+
+
+plantlists <- list()
+plantlists[["None"]] <- reslist
+plantlists[["Climate"]] <- resclimnormlist
+plantlists[["Humans"]] <- reshumnormlist
+plantlists[["Climate+Humans"]] <- resclimhumnormlist
+plantlists[["Plants"]] <- resplanormlist
+plantlists[["Climate+Humans+Plants"]] <- resclimhumplanormlist
+plantlists[["Animals"]] <- resaninormlist
+plantlists[["Animals+Plants"]] <- resaniplanormlist
+plantlists[["Climate+Humans+Animals"]] <- resclimhumaninormlist
+plantlists[["Climate+Humans+Animals+Plants"]] <- rescovnormlist
+
+
+# CPO
+cpotab <- sapply(goodplantnames, function(response){
+    print(response)
+    vec <- sapply( names(plantlists), function(modelname){ -sum(log(plantlists[[modelname]][[response]]$cpo$cpo),na.rm=TRUE) })
+    return(vec)
+})
+rownames(cpotab) <- names(plantlists)
+cpotabmelted <- melt(cpotab)
+colnames(cpotabmelted) <- c("Model","Animal","CPO")
+cpoplot <- ggplot(cpotabmelted) +
+geom_point(aes(x=Model,y=CPO,group=Animal,colour=Animal)) +
+geom_line(aes(x=Model,y=CPO,group=Animal,colour=Animal)) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+axis.title.x=element_blank(),
+text = element_text(size = 10)
+)
+
+# waic
+waictab <- sapply(goodplantnames, function(response){
+    print(response)
+    vec <- sapply( names(plantlists), function(modelname){plantlists[[modelname]][[response]]$waic$waic})
+    return(vec)
+})
+rownames(waictab) <- names(plantlists)
+waictabmelted <- melt(waictab)
+colnames(waictabmelted) <- c("Model","Animal","WAIC")
+waicplot <- ggplot(waictabmelted) +
+geom_point(aes(x=Model,y=WAIC,group=Animal,colour=Animal)) +
+geom_line(aes(x=Model,y=WAIC,group=Animal,colour=Animal)) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1),
+axis.title.x=element_blank(),
+text = element_text(size = 10)
+)
+
+cpoplotlet <- arrangeGrob(cpoplot, top = textGrob("A", x = unit(0, "npc"), y   = unit(1, "npc"), just=c("left","top"),
+         gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
+waicplotlet <- arrangeGrob(waicplot, top = textGrob("B", x = unit(0, "npc"), y   = unit(1, "npc"), just=c("left","top"),
+         gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
+grid.arrange(cpoplotlet,waicplotlet, ncol=2, vp=viewport(width=0.98, height=0.98))
+
+
+covarplots <- CreateCovarPlots(waictab,goodanimalnames)
+grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]], vp=viewport(width=0.98, height=0.98))
+
+covarplots <- CreateCovarPlots(waictab,goodanimalnames,forcemodel="Climate+Humans+Animals")
+grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]], vp=viewport(width=0.98, height=0.98))
+
+
+
+
+
+
+# Project plant Gamma-Hurdle field (Bernoulli component)
+for(response in goodplantnames){
+res <- reslist[[response]]
+PlotBox <- LonLatToAzi(rbind(c(135,50),c(45,50),c(-45,50),c(-135,50)))
+projl <- ProjBinomMesh(res,xytab,mesh.s,mesh.t,spde.s,PlotBox=PlotBox)
+minplot <- 0
+maxplot <- 1
+mplots <- lapply(reducedtidx,function(i){
+m1 <- melt(projl[[1]][[i]])
+m1 <- cbind(projl[[3]]$lattice$loc,m1[,3])
+m1 <- data.frame(m1)
+colnames(m1) <- c("Lon","Lat","Score")
+title <- paste("t = ",round(tknots[i])," years",sep="")
+p1 <- PlotPolar(m1,title=title,minplot=minplot,maxplot=maxplot,forcelegtit="Prob")
+return(p1)
+})
+#grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+#png(paste(response,".png",sep=""),width=3000,height=1500,res=200)
+#grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], mplots[[6]], nrow = 2,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+#dev.off()
+png(paste(response,".png",sep=""),width=4000,height=750,res=300)
+grid.arrange(mplots[[1]], mplots[[2]], mplots[[3]], mplots[[4]], mplots[[5]], nrow = 1,top=textGrob(response,gp=gpar(fontsize=20,font=2)))
+dev.off()
+}
