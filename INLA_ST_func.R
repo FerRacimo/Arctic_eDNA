@@ -418,7 +418,7 @@ ggplot(data=m1,aes(x = Lon, y = Lat, z = Score,fill=Score)) +
 
 
 
-CreateCovarPlots <- function(scoretab,names,forcemodel=NA){
+CreateCovarPlots <- function(scoretab,names,modellist,forcemodel=NA){
 
 covarplots <- lapply(names,function(response){
     modelvec <- scoretab[,response]
@@ -427,7 +427,7 @@ covarplots <- lapply(names,function(response){
     model <- rownames(scoretab)[idx] 
     if(!is.na(forcemodel)){model <- forcemodel}
     print(c(response,score,model))
-    fitted <- animallists[[model]][[response]]
+    fitted <- modellist[[model]][[response]]
     positive <- which(fitted$summary.fixed[,"0.025quant"] > 0 & fitted$summary.fixed[,"0.975quant"] > 0 )
     positivenames <- rownames(fitted$summary.fixed[positive,])
     negative <- which(fitted$summary.fixed[,"0.025quant"] < 0 & fitted$summary.fixed[,"0.975quant"] < 0 )
@@ -442,6 +442,8 @@ covarplots <- lapply(names,function(response){
     colnames(validall) <- c("covariate","colour","effect","sd","quantA","quantB","quantC","mode","kld")
     # Remove intercept
     validall <- validall[rownames(validall)!="b0",]
+    validall <- validall[rownames(validall)!="z.intercept",]
+    validall <- validall[rownames(validall)!="y.intercept",]
     p1 <- ggplot(data=validall) + 
         geom_point(aes(y=covariate,x=effect,colour=colour)) +
         geom_errorbarh(aes(y=covariate,xmin =quantA,xmax=quantC,colour=colour)) +
@@ -458,3 +460,35 @@ return(covarplots)
 }
 
 
+
+CreateCovarTabs <- function(scoretab,names,modellist,forcemodel=NA){
+
+covartabs <- lapply(names,function(response){
+    modelvec <- scoretab[,response]
+    idx <- which(modelvec == min(modelvec))
+    score <- modelvec[idx]
+    model <- rownames(scoretab)[idx]
+    if(!is.na(forcemodel)){model <- forcemodel}
+    print(c(response,score,model))
+    fitted <- modellist[[model]][[response]]
+    positive <- which(fitted$summary.fixed[,"0.025quant"] > 0 & fitted$summary.fixed[,"0.975quant"] > 0 )
+    positivenames <- rownames(fitted$summary.fixed[positive,])
+    negative <- which(fitted$summary.fixed[,"0.025quant"] < 0 & fitted$summary.fixed[,"0.975quant"] < 0 )
+    negativenames <- rownames(fitted$summary.fixed[negative,])
+    zero <- which(fitted$summary.fixed[,"0.025quant"] < 0 & fitted$summary.fixed[,"0.975quant"] > 0 )
+    zeronames <- rownames(fitted$summary.fixed[zero,])
+    validall <- fitted$summary.fixed
+    # Remove intercept
+    validall <- validall[rownames(validall)!="b0",]
+    validall <- validall[rownames(validall)!="z.intercept",]
+    validall <- validall[rownames(validall)!="y.intercept",]
+    validall <- data.frame(animal=row.names(validall),round(validall,3))
+    #validall <- cbind(rownames(fitted$summary.fixed),fitted$summary.fixed)
+    colnames(validall) <- c("covariate","mean","sd","2.5% quantile","50% quantile","97.5% quantile","mode","kld")
+
+    return(validall)
+})
+
+return(covartabs)
+
+}
