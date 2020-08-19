@@ -25,9 +25,11 @@ allgridtimes <- sort(unique(gridtab$Age))
 
 
 # Build site table
-plant <- t(read.table("plant/life_form_richness.csv",sep=",",header=TRUE,row.names=1))
+#plant <- t(read.table("plant/life_form_richness_2.csv",sep=",",header=TRUE,row.names=1))
+plant <- read.table("plant/nmds_k3.csv",sep=",",header=TRUE,row.names=1)
 plant <- data.frame(row.names(plant),plant)
 colnames(plant)[1] <- "sample"
+
 animal <- read.table("animal/distribution_matrix_withHerbivore.csv",sep=",",header=TRUE)
 metadata <- read.table("sample_metadata/sample_metadata_v17.csv",sep=",",header=TRUE)
 metadata$Age <- as.numeric(metadata$Age)
@@ -114,7 +116,7 @@ for(response in goodanimalnames){
 
     # Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
     namesclim <- allenvnames[which(allenvnames != "human")]
-    resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2,PlotBox=PlotBox)
+    resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2)
 
     # Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
     reshumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=2)
@@ -202,12 +204,28 @@ waicplotlet <- arrangeGrob(waicplot, top = textGrob("B", x = unit(0, "npc"), y  
          gp=gpar(col="black", fontsize=22, fontfamily="Arial")))
 grid.arrange(cpoplotlet,waicplotlet, ncol=2, vp=viewport(width=0.98, height=0.98))
 
+write.table(data.frame(Model=row.names(waictab),round(waictab,2)),file="tables/waictab_animals.tsv",col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+write.table(data.frame(Model=row.names(cpotab),round(cpotab,2)),file="tables/cpotab_animals.tsv",col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
 
-covarplots <- CreateCovarPlots(waictab,goodanimalnames)
+covarplots <- CreateCovarPlots(waictab,goodanimalnames,animallists)
 grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]],covarplots[[5]],covarplots[[6]], vp=viewport(width=0.98, height=0.98))
 
-covarplots <- CreateCovarPlots(waictab,goodanimalnames,forcemodel="Climate+Humans+Plants")
+covarplots <- CreateCovarPlots(waictab,goodanimalnames,animallists,forcemodel="Climate+Humans+Plants")
 grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]],covarplots[[5]],covarplots[[6]], vp=viewport(width=0.98, height=0.98))
+
+covartabs <- CreateCovarTabs(waictab,goodanimalnames,animallists)
+for(i in seq(1,length(goodanimalnames))){
+    animal <- goodanimalnames[i]
+    tab <- covartabs[[i]]
+    write.table(tab,file=paste("tables/",animal,"_besttab.tsv",sep=""),col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+}
+
+covartabs <- CreateCovarTabs(waictab,goodanimalnames,animallists,forcemodel="Climate+Humans+Plants")
+for(i in seq(1,length(goodanimalnames))){
+    animal <- goodanimalnames[i]
+    tab <- covartabs[[i]]
+    write.table(tab,file=paste("tables/",animal,"_climhumplatab.tsv",sep=""),col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+}
 
 
 # Herbivore
@@ -219,7 +237,7 @@ reslist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namesco
 
 # Run INLA - Binomial model with number of trials = 1 with climate covariates (normalized)
 namesclim <- allenvnames[which(allenvnames != "human")]
-resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2,PlotBox=PlotBox)
+resclimnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=namesclim,normcov=2)
 
 # Run INLA - Binomial model with number of trials = 1 with human covariates (normalized)
 reshumnormlist[[response]] <- RunInlaBin(response,sitetab,xytab,mesh.s,mesh.t,1,namescov=c("human"),normcov=2)
@@ -288,8 +306,17 @@ waicplotlet <- arrangeGrob(waicplot, top = textGrob("B", x = unit(0, "npc"), y  
 grid.arrange(cpoplotlet,waicplotlet, ncol=2, vp=viewport(width=0.98, height=0.98))
 
 
-covarplots <- CreateCovarPlots(waictab,c("Herbivore"))
+write.table(data.frame(Model=row.names(waictab),round(waictab,2)),file="tables/waictab_herbivores.tsv",col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+write.table(data.frame(Model=row.names(cpotab),round(cpotab,2)),file="tables/cpotab_herbivores.tsv",col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
+
+covarplots <- CreateCovarPlots(waictab,c("Herbivore"),animallists)
 grid.arrange(covarplots[[1]], vp=viewport(width=0.98, height=0.98))
+
+
+covartabs <- CreateCovarTabs(waictab,c("Herbivore"),animallists)
+animal <- "Herbivore"
+tab <- covartabs[[1]]
+write.table(tab,file=paste("tables/",animal,"_besttab.tsv",sep=""),col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
 
 
 
@@ -483,10 +510,10 @@ waicplotlet <- arrangeGrob(waicplot, top = textGrob("B", x = unit(0, "npc"), y  
 grid.arrange(cpoplotlet,waicplotlet, ncol=2, vp=viewport(width=0.98, height=0.98))
 
 
-covarplots <- CreateCovarPlots(waictab,goodanimalnames)
+covarplots <- CreateCovarPlots(waictab,goodplantnames,plantlists)
 grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]], vp=viewport(width=0.98, height=0.98))
 
-covarplots <- CreateCovarPlots(waictab,goodanimalnames,forcemodel="Climate+Humans+Animals")
+covarplots <- CreateCovarPlots(waictab,goodplantnames,plantlists,forcemodel="Climate+Humans+Animals")
 grid.arrange(covarplots[[1]],covarplots[[2]],covarplots[[3]],covarplots[[4]], vp=viewport(width=0.98, height=0.98))
 
 
