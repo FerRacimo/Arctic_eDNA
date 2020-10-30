@@ -55,7 +55,7 @@ CRS.new <- CRS("+init=epsg:4326")
 # Run binomial model in INLA
 RunInlaBin <- function(var=NA,sitetab=NA,xytab=NA,mesh.s=NA,mesh.t=NA,Ntrials=1,namescov=c(),normcov=0,PlotBox=NULL,project=FALSE){
 
-    k <- length(mesh.t)
+    k <- length(mesh.t$loc)
 
     # Projection points
     if(is.null(PlotBox)){
