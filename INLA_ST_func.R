@@ -1,4 +1,5 @@
 library("tidyr")
+library("stringr")
 library("INLA")
 library("splancs")
 library("rgeos")
@@ -40,6 +41,22 @@ LonLatToAzi <- function(test){
 }
 
 
+
+LonLatToAziSPDF <- function(test){
+    colnames(test)[1] <- "Lon"
+    colnames(test)[2] <- "Lat"
+    test <- data.frame(test)
+    coordinates(test) <- ~Lon+Lat
+    proj4string(test) <- CRS("+init=epsg:4326")
+    CRS.new <- CRS("+proj=aeqd +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=km +no_defs")
+    test2 <- spTransform(test, CRS.new)
+    return(test2)
+}
+
+
+
+
+
 AziToLonLat <- function(m1){
     colnames(m1) <- c("X","Y")
     coordinates(m1) <- ~X+Y
@@ -55,7 +72,7 @@ CRS.new <- CRS("+init=epsg:4326")
 # Run binomial model in INLA
 RunInlaBin <- function(var=NA,sitetab=NA,xytab=NA,mesh.s=NA,mesh.t=NA,Ntrials=1,namescov=c(),normcov=0,PlotBox=NULL,project=FALSE){
 
-    k <- length(mesh.t)
+    k <- length(mesh.t$loc)
 
     # Projection points
     if(is.null(PlotBox)){
@@ -164,6 +181,12 @@ RunInlaBin <- function(var=NA,sitetab=NA,xytab=NA,mesh.s=NA,mesh.t=NA,Ntrials=1,
 
     return(resall)
 }
+
+
+
+
+
+
 
 
 
@@ -491,4 +514,65 @@ covartabs <- lapply(names,function(response){
 
 return(covartabs)
 
+}
+
+
+
+
+
+PlotPolarB <- function(pred,title=NA,minplot=NA,maxplot=NA,forcelegtit=NA,plotcoast=TRUE){
+
+# custom theme without axes and annotations
+theme_polar <- function(){
+   list(
+      theme_bw(base_size=10),
+      theme(
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(),
+         axis.text = element_blank(),
+         axis.ticks = element_blank()),
+      labs(x='',y=''))
+}
+
+dt <- rnaturalearth::ne_coastline()
+clip_boundary <- sp::SpatialPolygons(
+  list(sp::Polygons(
+    list(sp::Polygon(
+      data.frame(lon = c(-180, 180, 180, -180), lat = c(30, 30, 90, 90)))), ID = 1)
+  ), proj4string = sp::CRS(sp::proj4string(dt)))
+
+arctic <- raster::crop(dt, clip_boundary)
+arctic <- sp::spTransform(arctic, sp::CRS("+proj=aeqd +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=km +no_defs"))
+arctic_sf <- sf::st_as_sf(arctic)
+
+if(is.na(forcelegtit)){
+        newlegtit="Score"
+        } else{
+        newlegtit = forcelegtit
+}
+
+if(plotcoast == TRUE){
+	     pl1 <- ggplot() +
+  	     gg(pred, aes(fill = mean)) +
+  	     facet_wrap(~Age) +
+  	     coord_equal() +
+  	     ylim(c(-6500,6500)) +
+  	     xlim(c(-6500,6500)) +
+  	     ggspatial::layer_spatial(data = arctic_sf,colour="white") +
+  	     scale_fill_viridis(limits = c(minplot,maxplot),name=newlegtit) +
+  	     ggtitle(title) +
+  	     theme_polar()
+} else {
+             pl1 <- ggplot() +
+             gg(pred, aes(fill = mean)) +
+             facet_wrap(~Age) +
+             coord_equal() +
+             ylim(c(-6500,6500)) +
+             xlim(c(-6500,6500)) +
+             scale_fill_viridis(limits = c(minplot,maxplot),name=newlegtit) +
+             ggtitle(title) +
+             theme_polar()
+	     }
+
+return(pl1)
 }
